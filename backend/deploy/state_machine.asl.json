@@ -1,0 +1,34 @@
+{
+  "Comment": "MedSupply nightly refresh: live risk prediction -> counterfactual sourcing pipeline -> publish to S3",
+  "StartAt": "PredictRisk",
+  "States": {
+    "PredictRisk": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${FunctionArn}",
+        "Payload": { "action": "predict_all" }
+      },
+      "ResultSelector": { "result.$": "$.Payload" },
+      "ResultPath": "$.predict",
+      "Retry": [ { "ErrorEquals": ["States.TaskFailed", "Lambda.ServiceException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2.0 } ],
+      "Catch": [ { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "Failed" } ],
+      "Next": "RunSimulationPipeline"
+    },
+    "RunSimulationPipeline": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${FunctionArn}",
+        "Payload": { "action": "run_pipeline" }
+      },
+      "ResultSelector": { "result.$": "$.Payload" },
+      "ResultPath": "$.pipeline",
+      "Retry": [ { "ErrorEquals": ["States.TaskFailed"], "IntervalSeconds": 3, "MaxAttempts": 2, "BackoffRate": 2.0 } ],
+      "Catch": [ { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "Failed" } ],
+      "Next": "Done"
+    },
+    "Done": { "Type": "Succeed" },
+    "Failed": { "Type": "Fail", "Error": "MedSupplyPipelineFailed", "Cause": "See $.error in execution history" }
+  }
+}

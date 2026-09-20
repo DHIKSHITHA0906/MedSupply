@@ -1,0 +1,1 @@
+# Lite Lambda (zip): no scikit-learn. boto3 is already in the Lambda runtime.

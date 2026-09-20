@@ -1,0 +1,305 @@
+[
+  {
+    "drug": "BUPIVACAINE HYDROCHLORIDE INJECTION",
+    "risk_score": 0.8876,
+    "risk_window_days": 7,
+    "current_shortage": true,
+    "substitutes": []
+  },
+  {
+    "drug": "CEFEPIME HYDROCHLORIDE INJECTION",
+    "risk_score": 0.8835,
+    "risk_window_days": 7,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "CARBOPLATIN INJECTION",
+    "risk_score": 0.8065,
+    "risk_window_days": 7,
+    "current_shortage": true,
+    "substitutes": [
+      "Oxaliplatin Injection"
+    ]
+  },
+  {
+    "drug": "KETOROLAC TROMETHAMINE TABLET",
+    "risk_score": 0.8051,
+    "risk_window_days": 7,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "IMIPENEM AND CILASTATIN INJECTION",
+    "risk_score": 0.7431,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "KETOROLAC TROMETHAMINE INJECTION",
+    "risk_score": 0.7372,
+    "risk_window_days": 14,
+    "current_shortage": true,
+    "substitutes": []
+  },
+  {
+    "drug": "TAZEMETOSTAT HYDROBROMIDE TABLET",
+    "risk_score": 0.737,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "DOCETAXEL INJECTION",
+    "risk_score": 0.7217,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "NEBIVOLOL HYDROCHLORIDE TABLET",
+    "risk_score": 0.7151,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "PINDOLOL TABLET",
+    "risk_score": 0.7124,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "IVABRADINE HYDROCHLORIDE TABLET",
+    "risk_score": 0.7093,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "METRONIDAZOLE INJECTION",
+    "risk_score": 0.7057,
+    "risk_window_days": 14,
+    "current_shortage": true,
+    "substitutes": []
+  },
+  {
+    "drug": "DECITABINE INJECTION",
+    "risk_score": 0.6901,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": [
+      "Azacitidine Injection",
+      "Pentostatin Injection"
+    ]
+  },
+  {
+    "drug": "MEPERIDINE HYDROCHLORIDE INJECTION",
+    "risk_score": 0.6698,
+    "risk_window_days": 14,
+    "current_shortage": true,
+    "substitutes": []
+  },
+  {
+    "drug": "PALBOCICLIB CAPSULE",
+    "risk_score": 0.6629,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": [
+      "Idelalisib Tablet",
+      "Everolimus Tablet",
+      "Lorlatinib Tablet"
+    ]
+  },
+  {
+    "drug": "DOXYCYCLINE HYCLATE TABLET",
+    "risk_score": 0.6601,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "STREPTOZOCIN POWDER, FOR SOLUTION",
+    "risk_score": 0.6597,
+    "risk_window_days": 14,
+    "current_shortage": true,
+    "substitutes": []
+  },
+  {
+    "drug": "IVABRADINE SOLUTION",
+    "risk_score": 0.6593,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "MORPHINE SULFATE SUPPOSITORY",
+    "risk_score": 0.6589,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "CLINDAMYCIN HYDROCHLORIDE CAPSULE",
+    "risk_score": 0.6527,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "FUROSEMIDE ORAL SOLUTION",
+    "risk_score": 0.6526,
+    "risk_window_days": 14,
+    "current_shortage": true,
+    "substitutes": [
+      "Furosemide Injection"
+    ]
+  },
+  {
+    "drug": "DILTIAZEM HYDROCHLORIDE INJECTION",
+    "risk_score": 0.6509,
+    "risk_window_days": 14,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "IDELALISIB TABLET",
+    "risk_score": 0.6457,
+    "risk_window_days": 30,
+    "current_shortage": false,
+    "substitutes": [
+      "Lorlatinib Tablet",
+      "Everolimus Tablet",
+      "Palbociclib Capsule"
+    ]
+  },
+  {
+    "drug": "NEOSTIGMINE METHYLSULFATE INJECTION",
+    "risk_score": 0.6368,
+    "risk_window_days": 30,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "CLINDAMYCIN PALMITATE HYDROCHLORIDE INJECTION",
+    "risk_score": 0.6308,
+    "risk_window_days": 30,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "CHLOROTHIAZIDE ORAL SUSPENSION",
+    "risk_score": 0.6211,
+    "risk_window_days": 30,
+    "current_shortage": false,
+    "substitutes": [
+      "Quinapril/Hydrochlorothiazide Tablet"
+    ]
+  },
+  {
+    "drug": "PIPERACILLIN AND TAZOBACTAM INJECTION",
+    "risk_score": 0.6203,
+    "risk_window_days": 30,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "LORLATINIB TABLET",
+    "risk_score": 0.6197,
+    "risk_window_days": 30,
+    "current_shortage": false,
+    "substitutes": [
+      "Everolimus Tablet",
+      "Idelalisib Tablet",
+      "Palbociclib Capsule"
+    ]
+  },
+  {
+    "drug": "PENTAMIDINE ISETHIONATE INJECTION",
+    "risk_score": 0.5986,
+    "risk_window_days": 30,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "AZITHROMYCIN INJECTION",
+    "risk_score": 0.589,
+    "risk_window_days": 30,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "ARSENIC TRIOXIDE INJECTION",
+    "risk_score": 0.5795,
+    "risk_window_days": 30,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "REMIFENTANIL HYDROCHLORIDE INJECTION",
+    "risk_score": 0.572,
+    "risk_window_days": 30,
+    "current_shortage": true,
+    "substitutes": []
+  },
+  {
+    "drug": "DACOMITINIB TABLET",
+    "risk_score": 0.5109,
+    "risk_window_days": 30,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "FLUVASTATIN SODIUM TABLET, EXTENDED RELEASE",
+    "risk_score": 0.4804,
+    "risk_window_days": 60,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "QUINAPRIL/HYDROCHLOROTHIAZIDE TABLET",
+    "risk_score": 0.4082,
+    "risk_window_days": 60,
+    "current_shortage": true,
+    "substitutes": [
+      "Chlorothiazide Oral Suspension"
+    ]
+  },
+  {
+    "drug": "CONIVAPTAN HYDROCHLORIDE INJECTION",
+    "risk_score": 0.3729,
+    "risk_window_days": 60,
+    "current_shortage": true,
+    "substitutes": []
+  },
+  {
+    "drug": "BELLADONNA AND OPIUM SUPPOSITORY",
+    "risk_score": 0.3471,
+    "risk_window_days": 90,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "HYDROMORPHONE HYDROCHLORIDE SUPPOSITORY",
+    "risk_score": 0.3101,
+    "risk_window_days": 90,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "NITROGLYCERIN OINTMENT",
+    "risk_score": 0.2768,
+    "risk_window_days": 90,
+    "current_shortage": false,
+    "substitutes": []
+  },
+  {
+    "drug": "RIFAPENTINE TABLET, FILM COATED",
+    "risk_score": 0.2195,
+    "risk_window_days": 90,
+    "current_shortage": false,
+    "substitutes": []
+  }
+]

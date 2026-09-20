@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: MedSupply Member C (LITE) - API + Step Functions + S3. No scikit-learn; /predict serves Member A's saved scores.
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    MemorySize: 512
+
+Resources:
+  DataBucket:
+    Type: AWS::S3::Bucket
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: ['*']
+        AllowHeaders: [Content-Type]
+        AllowMethods: [GET, POST, OPTIONS]
+
+  Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../build_lite/
+      Handler: lambda_handler.lambda_handler
+      Environment:
+        Variables:
+          DATA_BUCKET: !Ref DataBucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref DataBucket
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/{proxy+}
+            Method: ANY
+
+  Pipeline:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: state_machine.asl.json
+      DefinitionSubstitutions:
+        FunctionArn: !GetAtt Function.Arn
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref Function
+
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/api
+  BucketName:
+    Value: !Ref DataBucket
+  StateMachineArn:
+    Value: !Ref Pipeline
