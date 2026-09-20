@@ -11,7 +11,7 @@ import {
   respondWithin,
   riskBand,
 } from "../lib/format";
-
+import { simulate } from "../services/api";
 const SOURCE_FILTERS = ["all", "supplier", "hospital", "warehouse"];
 
 const SORTS = {
@@ -285,6 +285,8 @@ export default function Intervention({ d, view, onViewChange }) {
   const [sort, setSort] = useState("recommended");
   const [selectedId, setSelectedId] = useState(recommended?.id ?? null);
   const [confirmed, setConfirmed] = useState(false);
+  const [simulating, setSimulating] = useState(false);
+  const [simulationResult, setSimulationResult] = useState(null);
   const scrollTo = useRef(null);
 
   // "View details →" in the list view flips to cards and scrolls to the plan
@@ -308,10 +310,30 @@ export default function Intervention({ d, view, onViewChange }) {
   );
   const chosen = accepted.find((p) => p.id === selectedId) || null;
 
-  const select = (id) => {
-    setSelectedId(id);
-    setConfirmed(false);
-  };
+  const select = async (id) => {
+  setSelectedId(id);
+  setConfirmed(false);
+  setSimulationResult(null);
+
+  const plan = accepted.find((p) => p.id === id);
+  if (!plan) return;
+
+  setSimulating(true);
+
+  try {
+    const allocations = plan.allocations.map((a) => ({
+      source_id: a.id,
+      units: a.units,
+    }));
+
+    const result = await simulate(d.name, allocations);
+    setSimulationResult(result);
+  } catch (err) {
+    setSimulationResult({ error: err.message });
+  } finally {
+    setSimulating(false);
+  }
+};
 
   if (accepted.length === 0) {
     return (
@@ -509,7 +531,23 @@ export default function Intervention({ d, view, onViewChange }) {
           )}
         </section>
       )}
+      {simulating && (
+  <div className="info-banner">
+    Running live simulation for the selected plan...
+  </div>
+)}
 
+{simulationResult && !simulationResult.error && (
+  <div className="info-banner">
+    Simulation result: <strong>{simulationResult.verdict}</strong>
+  </div>
+)}
+
+{simulationResult?.error && (
+  <div className="info-banner">
+    Simulation failed: {simulationResult.error}
+  </div>
+)}
       {chosen && (
         <div className={`confirm-bar ${confirmed ? "done" : ""}`}>
           {confirmed ? (
