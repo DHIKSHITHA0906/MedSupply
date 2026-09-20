@@ -1,60 +1,76 @@
 # MedSupply — Member D frontend (React + Vite, plain CSS)
 
-## How this maps to the shared architecture
+## Current UI architecture
 
-```
-src/
-├── App.jsx                    -> wires everything together, holds selection state
-├── main.jsx                   -> standard Vite entry point (skip if your repo already has one)
-├── data/
-│   └── demoData.js            -> stand-in for output.json / member_b_output.json / member_c_output.json
-├── services/
-│   └── api.js                 -> the ONLY file that knows whether data is demo or live.
-│                                  flip USE_LIVE_API to true once C's Lambda Function URL exists.
-├── components/
-│   ├── Header.jsx              -> wordmark, pipeline status, live clock
-│   ├── KPIBar.jsx               -> critical / shortages / safe plans / overdue — all computed live
-│   ├── TriageQueue.jsx          -> left rail, sorted by risk, click to select
-│   └── DetailPanel.jsx          -> everything on the right: Overview, Network, Intervention, Human review
-│                                  (kept as one file with internal subcomponents — 14 tiny files for
-│                                  what's really 4 screens was adding indirection without benefit;
-│                                  split further if a teammate wants to own one screen independently)
-└── styles/
-    └── console.css             -> all design tokens + component styles, plain CSS as agreed
+The frontend is now a two-column decision console:
+
+```text
+MEDSUPPLY
+  ↓
+KPI STRIP
+  ↓
+┌─────────────────────────┬────────────────────────────────┐
+│ TRIAGE QUEUE             │ SELECTED MEDICINE              │
+│ scrolls naturally        │ sticky + internally scrollable │
+│                          │                                │
+│ Bupivacaine              │ risk spotlight + countdown     │
+│ Cefepime                 │ provenance                     │
+│ Carboplatin              │ network                        │
+│ ...                      │ intervention                   │
+└─────────────────────────┴────────────────────────────────┘
 ```
 
-## To drop into your existing repo
+### Components
 
-1. Copy `src/data`, `src/services`, `src/components`, `src/styles` into your existing `src/`.
-2. Copy the contents of `App.jsx` into your existing `App.jsx` (or replace it — it has no
-   other dependencies besides the four imports at the top).
-3. Skip `main.jsx` if you already have an entry point.
-4. Install nothing extra — this uses only `react` and `react-dom`, which your Vite setup
-   already has.
+- `Dashboard.jsx` — split-screen composition and selected-drug state
+- `ShortagesPage.jsx` — dense triage queue, filters, search and animated row entrance
+- `DetailPanel.jsx` — selected drug, risk spotlight, decision timeline and sliding tabs
+- `StatusMark.jsx` — consistent severity/status language
+- `CountUp.jsx` — animated selected-drug risk score
+- `NetworkGraph.jsx` — supply graph plus facility detail drawer
+- `Intervention.jsx` — safe-plan comparison, rejected-vs-accepted comparison and network impact
+- `KPIBar.jsx` — shortage and response KPIs
+- `Header.jsx` — system status, horizon, clock and demo user
+- `LoginPage.jsx` — demo/operator login
 
-## Going from demo data to the live pipeline
+## UX changes implemented
 
-Everything reads through `services/api.js`. When C's Lambda Function URL is deployed:
+1. Sticky selected-drug panel so the right side remains visible while the triage queue scrolls.
+2. Visual risk hierarchy: ≥80% critical, 60–79% high, 40–59% watch, 25–39% monitor, <25% low. This is a frontend visual treatment only; Member B's official priority remains displayed separately.
+3. Reusable StatusMark component with red reserved for genuinely high-risk information.
+4. Dense interactive triage rows with hover state, selected state and subtle entrance animation.
+5. Selected-drug risk score animates with CountUp; other KPIs remain static.
+6. Data provenance remains intentionally static and transparent.
+7. Overview tabs use a sliding active indicator.
+8. Decision timeline shows NOW → ACTION DEADLINE → PREDICTED STOCKOUT and includes a live countdown.
+9. Network facility details open as a side drawer over the graph on desktop.
+10. Intervention includes an accepted-vs-rejected comparison to make the consequence of a sourcing decision visually obvious.
+11. The separate Human Review tab is intentionally removed; the human decision boundary is part of Intervention.
 
-```js
-// src/services/api.js
-const USE_LIVE_API = true;
-const API_BASE = "https://your-function-url.lambda-url.ap-south-1.on.aws";
+## Data/API boundary
+
+All components continue to read through `services/api.js`. The live API remains enabled by default.
+
+- `GET /api/scenarios`
+- `GET /api/scenarios/{drug}`
+- `GET /api/predict`
+- `POST /api/simulate`
+
+The API transformer keeps backend-specific fields out of the UI. Deadline timestamps are passed through when available so the decision countdown can use the server-provided action deadline.
+
+## Data provenance
+
+The UI distinguishes real/real-derived, simulated and synthetic information. Candidate substitution relationships are presented as decision-support relationships, not clinical interchangeability.
+
+## Demo login
+
+Default demo credentials are defined in `services/auth.js`. This frontend login is a demo gate, not a production security boundary.
+
+## Run locally
+
+```bash
+npm install
+npm run dev
 ```
 
-Nothing in `App.jsx` or any component needs to change — they only ever call
-`getScenarios()`, `getScenario(id)`, and `simulate(id, candidateId)`.
-
-## Design system, unchanged from the approved direction
-
-Charcoal-blue background, red/amber/green reserved strictly for risk severity, blue reserved
-for the network graph, Barlow Condensed for headers, IBM Plex Sans for body copy, IBM Plex
-Mono for anything numeric, no rounded-card kit, one real-time element (the deadline
-countdown), everything else static until the user acts.
-
-## What's real vs. placeholder right now
-
-Bupivacaine's numbers in `demoData.js` are the actual worked example from the brief (88.76%
-risk, the ₹45,922 accepted Cencora plan, the rejected Valley Children's transfer, the ripple
-effects through Fresenius Kabi). Cefepime, Carboplatin, and Ketorolac are placeholders in the
-same schema — replace them with real A/B/C output as it becomes available.
+No additional UI library is required. The React Bits-style interactions used here are intentionally implemented as small copy-paste components so the product keeps a coherent visual language instead of looking like a component catalogue.

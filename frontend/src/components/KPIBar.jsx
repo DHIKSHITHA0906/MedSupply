@@ -1,29 +1,45 @@
-export default function KPIBar({ drugs }) {
-  const critical = drugs.filter((d) => d.priority === "CRITICAL").length;
-  const shortages = drugs.filter((d) => d.currentShortage).length;
+import { isActiveShortage, needsActionToday, isUnderWatch } from "../lib/format";
+
+/**
+ * The four numbers at the top of the Shortages page. Every number is
+ * computed from the drug list, so the three shortage figures always add up:
+ *   Active shortages = Need action today + Under watch
+ *
+ * The first three double as filters for the card grid below.
+ */
+export default function KPIBar({ drugs, filter, onFilter }) {
+  const active = drugs.filter(isActiveShortage).length;
+  const action = drugs.filter(needsActionToday).length;
+  const watch = drugs.filter(isUnderWatch).length;
   const safePlans = drugs.reduce(
     (n, d) => n + d.candidates.filter((c) => c.verdict === "accepted").length,
     0
   );
-  const overdue = drugs.filter((d) => d.deadline.latestActionInDays < 0).length;
+
+  const items = [
+    { key: "active", num: active, label: "Active shortages", cls: "" },
+    { key: "action", num: action, label: "Need action today", cls: "crit" },
+    { key: "watch", num: watch, label: "Under watch", cls: "warn" },
+  ];
 
   return (
     <div className="kpi-strip">
-      <div className="kpi crit">
-        <div className="num">{critical}</div>
-        <div className="lbl">Critical priority</div>
-      </div>
-      <div className="kpi warn">
-        <div className="num">{shortages}</div>
-        <div className="lbl">Current shortages</div>
-      </div>
-      <div className="kpi safe">
-        <div className="num">{safePlans}</div>
-        <div className="lbl">Safe plans identified</div>
-      </div>
-      <div className="kpi">
-        <div className="num">{overdue}</div>
-        <div className="lbl">Overdue deadlines</div>
+      {items.map((k) => (
+        <button
+          key={k.key}
+          type="button"
+          className={`kpi ${k.cls} ${filter === k.key ? "on" : ""}`}
+          onClick={() => onFilter(filter === k.key ? "all" : k.key)}
+          aria-pressed={filter === k.key}
+          title="Click to filter the list below"
+        >
+          <span className="num">{k.num}</span>
+          <span className="lbl">{k.label}</span>
+        </button>
+      ))}
+      <div className="kpi safe static">
+        <span className="num">{safePlans}</span>
+        <span className="lbl">Safe response plans</span>
       </div>
     </div>
   );
