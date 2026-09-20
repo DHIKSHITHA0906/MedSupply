@@ -1,82 +1,153 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getScenarios, getScenario } from "./services/api";
+import { getSession, logout } from "./services/auth";
 import Header from "./components/Header";
-import KPIBar from "./components/KPIBar";
-import TriageQueue from "./components/TriageQueue";
-import DetailPanel from "./components/DetailPanel";
+import LoginPage from "./components/LoginPage";
+import Dashboard from "./components/Dashboard";
 import "./styles/console.css";
 
-export default function App() {
-  const [drugs, setDrugs] = useState([]);
-  const [activeId, setActiveId] = useState(null);
-  const [activeDrug, setActiveDrug] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [detailLoading, setDetailLoading] = useState(false);
+const TABS = ["overview", "network", "intervention"];
+const PREFETCH_CONCURRENCY = 4;
 
+function parseHash() {
+  const parts = window.location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+  if (parts[0] === "drug" && parts[1]) {
+    let id = parts[1];
+    try { id = decodeURIComponent(parts[1]); } catch { /* keep raw */ }
+    return { view: "drug", id, tab: TABS.includes(parts[2]) ? parts[2] : "overview" };
+  }
+  return { view: "shortages" };
+}
+
+function useRoute() {
+  const [route, setRoute] = useState(parseHash);
   useEffect(() => {
-    let cancelled = false;
-    getScenarios().then((data) => {
-      if (cancelled) return;
-      setDrugs(data);
-      setActiveId(data[0]?.id ?? null);
-      setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
+    const onChange = () => setRoute(parseHash());
+    window.addEventListener("hashchange", onChange);
+    return () => window.removeEventListener("hashchange", onChange);
   }, []);
+  const go = useCallback((hash) => { window.location.hash = hash; }, []);
+  return [route, go];
+}
 
-  // Fetch full detail whenever the selected drug changes
+export default function App() {
+  const [user, setUser] = useState(getSession);
+  const [route, go] = useRoute();
+  const [drugs, setDrugs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [details, setDetails] = useState({});
+  const [failed, setFailed] = useState({});
+  const [prefetching, setPrefetching] = useState(true);
+  const detailsRef = useRef(details);
+  detailsRef.current = details;
+
   useEffect(() => {
-    if (!activeId) {
-      setActiveDrug(null);
-      return;
-    }
+    if (!user) return;
     let cancelled = false;
-    setDetailLoading(true);
-    getScenario(activeId)
-      .then((detail) => {
+    setLoading(true);
+    setLoadError("");
+    getScenarios()
+      .then((data) => { if (!cancelled) { setDrugs(data); setLoading(false); } })
+      .catch((err) => { if (!cancelled) { setLoadError(err.message || "Couldn't reach the API."); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  useEffect(() => {
+    if (!drugs.length) return;
+    let cancelled = false;
+    setPrefetching(true);
+    const queue = [...drugs].sort((a, b) => b.risk - a.risk).map((d) => d.id);
+    async function worker() {
+      while (!cancelled && queue.length) {
+        const id = queue.shift();
+        if (detailsRef.current[id]) continue;
+        try {
+          const det = await getScenario(id);
+          if (cancelled) return;
+          if (det) setDetails((prev) => (prev[id] ? prev : { ...prev, [id]: det }));
+        } catch {
+          if (!cancelled) setFailed((prev) => ({ ...prev, [id]: true }));
+        }
+      }
+    }
+    Promise.all(Array.from({ length: PREFETCH_CONCURRENCY }, worker)).then(() => {
+      if (!cancelled) setPrefetching(false);
+    });
+    return () => { cancelled = true; };
+  }, [drugs]);
+
+  const selectedId = route.view === "drug" ? route.id : drugs[0]?.id;
+
+  useEffect(() => {
+    if (!user || !selectedId || detailsRef.current[selectedId]) return;
+    let cancelled = false;
+    setFailed((prev) => (prev[selectedId] ? { ...prev, [selectedId]: false } : prev));
+    getScenario(selectedId)
+      .then((det) => {
         if (cancelled) return;
-        setActiveDrug(detail);
-        setDetailLoading(false);
+        if (!det) { setFailed((prev) => ({ ...prev, [selectedId]: true })); return; }
+        setDetails((prev) => ({ ...prev, [selectedId]: det }));
       })
-      .catch(() => {
-        if (cancelled) return;
-        // Fall back to the thin list object if the detail fetch fails
-        setActiveDrug(drugs.find((d) => d.id === activeId) ?? null);
-        setDetailLoading(false);
-      });
-    return () => {
-      cancelled = true;
+      .catch(() => { if (!cancelled) setFailed((prev) => ({ ...prev, [selectedId]: true })); });
+    return () => { cancelled = true; };
+  }, [user, selectedId]);
+
+  const merged = useMemo(() => drugs.map((d) => {
+    const det = details[d.id];
+    if (!det) return d;
+    return {
+      ...d,
+      deadline: {
+        ...d.deadline,
+        predictedStockoutDays: det.deadline?.predictedStockoutDays,
+      },
     };
-  }, [activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [drugs, details]);
+
+  const signOut = () => {
+    logout(); setUser(null); setDrugs([]); setDetails({}); setFailed({}); setFilter("all"); go("#/");
+  };
+
+  if (!user) return <LoginPage onLogin={setUser} />;
+
+  let body;
+  if (loading) {
+    body = <div className="empty-state">Loading scenarios…</div>;
+  } else if (loadError) {
+    body = (
+      <div className="empty-block">
+        <p>Couldn't load the shortage list. {loadError}</p>
+        <button type="button" className="btn-ghost" onClick={() => window.location.reload()}>Try again</button>
+      </div>
+    );
+  } else if (!drugs.length) {
+    body = <div className="empty-state">No shortage scenarios are available.</div>;
+  } else {
+    const detail = details[selectedId];
+    body = (
+      <Dashboard
+        drugs={merged}
+        detail={detail}
+        selectedId={selectedId}
+        daysPending={prefetching}
+        filter={filter}
+        onFilter={setFilter}
+        onOpen={(id) => go(`#/drug/${encodeURIComponent(id)}/${route.view === "drug" ? route.tab : "overview"}`)}
+        onTab={(tab) => go(`#/drug/${encodeURIComponent(selectedId)}/${tab}`)}
+        tab={route.view === "drug" ? route.tab : "overview"}
+      />
+    );
+  }
 
   return (
     <div className="app">
-      <Header />
-      {!loading && <KPIBar drugs={drugs} />}
-      <main className="grid">
-        {loading ? (
-          <div className="empty-state" style={{ gridColumn: "1 / -1" }}>
-            Loading scenarios…
-          </div>
-        ) : (
-          <>
-            <TriageQueue drugs={drugs} activeId={activeId} onSelect={setActiveId} />
-            {detailLoading ? (
-              <section className="detail">
-                <div className="empty-state">Loading detail…</div>
-              </section>
-            ) : (
-              <DetailPanel drug={activeDrug} />
-            )}
-          </>
-        )}
-      </main>
+      <Header user={user} onSignOut={signOut} onHome={() => go("#/")} />
+      <main className="main">{body}</main>
       <footer className="foot">
         <span>
-          Data provenance: FDA status &amp; risk model are real-derived (Member A). Inventory and
-          pricing are simulated (Member C). Network topology is synthetic.
+          Data provenance: FDA status &amp; risk model are real-derived (Member A). Inventory and pricing are simulated (Member C). Network topology is synthetic. Decision support only — a pharmacist confirms every plan.
         </span>
       </footer>
     </div>

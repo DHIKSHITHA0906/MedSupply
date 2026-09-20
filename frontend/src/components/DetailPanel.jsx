@@ -1,53 +1,238 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import NetworkGraph from "./NetworkGraph";
+import Intervention from "./Intervention";
+import { deadlineTone, respondWithin, titleCase } from "../lib/format";
+import CountUp from "./CountUp";
+import StatusMark from "./StatusMark";
 
-function fmtCurrency(n) {
-  return "₹" + n.toLocaleString("en-IN");
+const TABS = [
+  ["overview", "Overview"],
+  ["network", "Network"],
+  ["intervention", "Intervention"],
+];
+
+/* ------------------------- Overview: action banner ------------------------- */
+const BANNER_COPY = {
+  critical: { eyebrow: "Action required", side: "Act now to avoid service disruption." },
+  urgent: { eyebrow: "Act soon", side: "Order soon to stay ahead of the stockout." },
+  ok: { eyebrow: "Time to plan", side: "There is time — compare your options before the window closes." },
+};
+
+function ActionBanner({ d, onViewOptions }) {
+  const tone = deadlineTone(d.deadline.status);
+  const copy = BANNER_COPY[tone];
+  const stockout = d.deadline.predictedStockoutDays;
+  const w = respondWithin(d.deadline.latestActionInDays);
+  const safeCount = d.candidates.filter((c) => c.verdict === "accepted").length;
+
+  return (
+    <div className={`action-banner ${tone}`} role="region" aria-label="Deadline">
+      <div className="ab-main">
+        <div className="ab-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round">
+            <path d="M12 3 L22 20 H2 Z" />
+            <path d="M12 10 v5" />
+            <path d="M12 17.5 v.01" />
+          </svg>
+        </div>
+        <div>
+          <div className="ab-eyebrow">{copy.eyebrow}</div>
+          <div className="ab-line">Predicted to run out in</div>
+          <div className="ab-days">
+            {stockout == null ? "—" : stockout.toFixed(2)} <span>days</span>
+          </div>
+          {w && (
+            <div className="ab-window">
+              {w.late ? (
+                <strong>{w.text}.</strong>
+              ) : (
+                <>
+                  You need to respond within <strong>{w.text}</strong>.
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="ab-mid">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
+          <path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9" />
+        </svg>
+        <span>{copy.side}</span>
+      </div>
+
+      <div className="ab-cta">
+        <button type="button" className="btn-cta" onClick={onViewOptions}>
+          View response options →
+        </button>
+        <span className="ab-count">
+          {safeCount === 0
+            ? "No safe response options found yet"
+            : `${safeCount} safe response ${safeCount === 1 ? "option" : "options"} available`}
+        </span>
+      </div>
+    </div>
+  );
 }
 
-function deadlineTone(status) {
-  if (status === "ACT NOW") return "";
-  if (status === "URGENT") return "calm";
-  return "ok";
+
+function riskVisualLevel(risk) {
+  const value = Number(risk ?? 0);
+  if (value >= 0.8) return "critical";
+  if (value >= 0.6) return "high";
+  if (value >= 0.4) return "watch";
+  if (value >= 0.25) return "monitor";
+  return "low";
 }
 
-function nodeColor(type) {
-  return type === "drug"
-    ? "var(--red)"
-    : type === "hospital"
-    ? "var(--blue)"
-    : type === "warehouse"
-    ? "var(--amber)"
-    : "var(--green)";
+function InfoTip({ children, text }) {
+  return (
+    <span className="info-tip" tabIndex="0" aria-label={text}>
+      {children}
+      <span className="info-tip-bubble" role="tooltip">{text}</span>
+    </span>
+  );
 }
 
-/* ---------------------------- Countdown ---------------------------- */
-function Countdown({ days }) {
-  const [seconds, setSeconds] = useState(Math.max(days, 0) * 86400);
+function formatDateTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function DecisionTimeline({ deadline }) {
+  const [remaining, setRemaining] = useState(null);
+  const targetRef = useRef(null);
 
   useEffect(() => {
-    setSeconds(Math.max(days, 0) * 86400);
-  }, [days]);
+    const days = Number(deadline?.latestActionInDays);
+    if (deadline?.latestActionAt) {
+      targetRef.current = new Date(deadline.latestActionAt).getTime();
+    } else if (Number.isFinite(days)) {
+      targetRef.current = Date.now() + days * 86400000;
+    } else {
+      targetRef.current = null;
+    }
 
-  useEffect(() => {
-    if (seconds <= 0) return;
-    const id = setInterval(() => setSeconds((s) => Math.max(s - 1, 0)), 1000);
+    const tick = () => {
+      if (!targetRef.current) return setRemaining(null);
+      setRemaining(Math.max(0, targetRef.current - Date.now()));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [seconds > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [deadline?.latestActionAt, deadline?.latestActionInDays]);
 
-  const h = String(Math.floor(seconds / 3600)).padStart(2, "0");
-  const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
-  const s = String(Math.floor(seconds % 60)).padStart(2, "0");
-  return <div className="countdown">{`${h}:${m}:${s}`}</div>;
+  const formatCountdown = (ms) => {
+    if (ms == null) return "—";
+    const total = Math.floor(ms / 1000);
+    const days = Math.floor(total / 86400);
+    const hours = Math.floor((total % 86400) / 3600);
+    const mins = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    if (days > 0) return `${days}d ${String(hours).padStart(2, "0")}h ${String(mins).padStart(2, "0")}m`;
+    return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  return (
+    <section className="decision-timeline" aria-label="Decision timeline">
+      <div className="timeline-label">Decision timeline</div>
+      <div className="timeline-track">
+        <div className="timeline-point now"><span>NOW</span></div>
+        <div className="timeline-line"><span className="timeline-fill" /></div>
+        <div className="timeline-point deadline"><span>ACTION DEADLINE</span><strong className="mono">{formatCountdown(remaining)}</strong></div>
+        <div className="timeline-line muted" />
+        <div className="timeline-point stockout"><span>PREDICTED STOCKOUT</span><strong className="mono">{deadline?.predictedStockoutDays == null ? "—" : `${deadline.predictedStockoutDays.toFixed(2)}d`}</strong></div>
+      </div>
+      <div className="timeline-foot">
+        <StatusMark level={deadlineTone(deadline?.status) === "critical" ? "critical" : deadlineTone(deadline?.status) === "urgent" ? "high" : "monitor"}>
+          {deadline?.status || "OK"}
+        </StatusMark>
+        <span>{respondWithin(deadline?.latestActionInDays)?.text ? `Latest action: ${respondWithin(deadline.latestActionInDays).text}` : "Decision window not available"}{deadline?.latestActionAt ? ` · ${formatDateTime(deadline.latestActionAt)}` : ""}</span>
+      </div>
+    </section>
+  );
 }
 
-/* ---------------------------- Overview ---------------------------- */
-function Overview({ d }) {
+/* ---------------------------------- Overview --------------------------------- */
+function Overview({ d, onViewOptions }) {
   return (
     <>
+      <ActionBanner d={d} onViewOptions={onViewOptions} />
+      <div className={`risk-spotlight ${riskVisualLevel(d.risk)}`}>
+        <div className="risk-spotlight-copy">
+          <span className="eyebrow">Selected medicine risk</span>
+          <div className="risk-hero"><CountUp value={d.risk * 100} /></div>
+          <div className="risk-status-row">
+            <StatusMark level={riskVisualLevel(d.risk)}>{titleCase(riskVisualLevel(d.risk))}</StatusMark>
+            <span className="official-priority">Model / triage priority: <strong>{titleCase(d.priority)}</strong></span>
+          </div>
+        </div>
+        <div className="risk-spotlight-side">
+          <div><span>Warning window</span><strong>{d.riskWindowDays} days</strong></div>
+          <div><span>FDA status</span><strong>{d.fdaStatus}</strong></div>
+        </div>
+      </div>
+      <DecisionTimeline deadline={d.deadline} />
+
+      <div className="overview-two-col">
+        <section className="evidence-panel no-action-panel" aria-labelledby="no-action-title">
+          <div className="panel-kicker">2 · What happens if no action?</div>
+          <h3 id="no-action-title" className="section-title">If nothing changes</h3>
+          <p className="hint">The scenario continues toward the projected stockout without an intervention.</p>
+          <div className="evidence-grid">
+            <div className="evidence-item">
+              <span>Stockout</span>
+              <strong>{d.noAction?.stockoutDays == null ? "—" : `${d.noAction.stockoutDays.toFixed(2)} days`}</strong>
+              <small>{formatDateTime(d.noAction?.stockoutAt)}</small>
+            </div>
+            <div className="evidence-item">
+              <span>Unmet units</span>
+              <strong>{d.noAction?.unmetUnits == null ? "—" : d.noAction.unmetUnits.toLocaleString("en-IN")}</strong>
+              <small>response requirement</small>
+            </div>
+            <div className="evidence-item">
+              <span>Affected facility</span>
+              <strong>{d.noAction?.affectedFacilities ?? "—"}</strong>
+              <small>{d.requester?.name || "Requesting facility"}</small>
+            </div>
+          </div>
+          <div className="consequence-line">
+            <StatusMark level={riskVisualLevel(d.risk)}>{d.deadline?.status || "MONITOR"}</StatusMark>
+            <span>{d.noAction?.consequence || "Supply continuity risk if no response is taken before stockout."}</span>
+          </div>
+        </section>
+
+        <section className="evidence-panel flagged-panel" aria-labelledby="flagged-title">
+          <div className="panel-kicker">3 · Why is this flagged?</div>
+          <h3 id="flagged-title" className="section-title">Alert evidence</h3>
+          <ul className="flag-list">
+            {(d.flaggedReasons || []).map((reason) => (
+              <li key={reason}><span className="flag-dot" />{reason}</li>
+            ))}
+          </ul>
+          <div className="flag-meta">
+            <span>
+              <InfoTip text="FDA status comes from the shortage-status data used by Member A; risk and warning window come from the risk pipeline.">
+                Provenance ⓘ
+              </InfoTip>
+            </span>
+            <strong>{d.currentShortage ? "FDA CURRENT" : "MODEL / WATCH"}</strong>
+          </div>
+        </section>
+      </div>
+
       <div className="stat-row">
         <div className="stat">
-          <div className="v">{Math.round(d.risk * 100)}%</div>
-          <div className="k">Risk score</div>
+          <div className="v">{(d.risk * 100).toFixed(2)}%</div>
+          <div className="k"><InfoTip text="Member A model risk score; not the same as the official triage priority.">Risk score ⓘ</InfoTip></div>
         </div>
         <div className="stat">
           <div className="v">{d.riskWindowDays}d</div>
@@ -55,7 +240,7 @@ function Overview({ d }) {
         </div>
         <div className="stat">
           <div className="v">{d.triageScore.toFixed(3)}</div>
-          <div className="k">Triage score</div>
+          <div className="k"><InfoTip text="Member B triage score used to prioritize the scenario.">Triage score ⓘ</InfoTip></div>
         </div>
         <div className="stat">
           <div className="v">{d.fdaStatus}</div>
@@ -94,299 +279,95 @@ function Overview({ d }) {
   );
 }
 
-/* ---------------------------- Network ---------------------------- */
-function NetworkGraph({ d }) {
-  const [selected, setSelected] = useState(null);
-  const { nodes, edges } = d.network;
-
+function SummaryOnly() {
   return (
-    <>
-      <h3 className="section-title">Dependency graph</h3>
-      <p className="hint">
-        The drug node links to every hospital, warehouse and supplier it currently touches.
-        Click a facility for its simulated stock.
-      </p>
-      <div className="graph-wrap">
-        <svg viewBox="0 0 600 200" width="100%" height="220" xmlns="http://www.w3.org/2000/svg">
-          {edges.map(([a, b], i) => {
-            const na = nodes.find((n) => n.id === a);
-            const nb = nodes.find((n) => n.id === b);
-            return (
-              <line
-                key={i}
-                x1={na.x}
-                y1={na.y + 14}
-                x2={nb.x}
-                y2={nb.y - 14}
-                stroke="var(--line)"
-                strokeWidth="1.5"
-              />
-            );
-          })}
-          {nodes.map((n) => (
-            <g
-              key={n.id}
-              style={{ cursor: n.type === "drug" ? "default" : "pointer" }}
-              onClick={() => n.type !== "drug" && setSelected(n)}
-            >
-              <circle cx={n.x} cy={n.y} r="14" fill={nodeColor(n.type)} fillOpacity={n.type === "drug" ? 1 : 0.85} />
-              <text
-                x={n.x}
-                y={n.y + 30}
-                textAnchor="middle"
-                fontFamily="IBM Plex Sans"
-                fontSize="11"
-                fill="var(--text-dim)"
-              >
-                {n.label}
-              </text>
-            </g>
-          ))}
-        </svg>
-      </div>
-      {selected && (
-        <div className="node-detail show">
-          <div className="nd-name">{selected.label}</div>
-          <div className="stat">
-            <div className="v">{selected.stock}</div>
-            <div className="k">Total stock (units)</div>
-          </div>
-          <div className="stat">
-            <div className="v">{selected.safe}</div>
-            <div className="k">Safely transferable</div>
-          </div>
-          <div className="stat">
-            <div className="v">{selected.lead}d</div>
-            <div className="k">Lead time</div>
-          </div>
-          <div className="stat">
-            <div className="v">{selected.expiry}d</div>
-            <div className="k">Days to expiry</div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ---------------------------- Intervention ---------------------------- */
-function Intervention({ d }) {
-  const rejected = d.candidates.find((c) => c.verdict === "rejected");
-  const accepted = d.candidates.find((c) => c.verdict === "accepted");
-  const rp = d.ripple;
-
-  return (
-    <>
-      <h3 className="section-title">Candidate transfer plans</h3>
-      <p className="hint">
-        Every rejected plan failed because it would create a new shortage elsewhere — not because it was expensive.
-      </p>
-      <div className="ledger">
-        {rejected && (
-          <div className="lcol rejected">
-            <div className="verdict">✕ Rejected</div>
-            <div className="strategy-name">{rejected.strategy}</div>
-            <div className="allocation">
-              {rejected.source} → <span className="units">{rejected.units} units</span>
-            </div>
-            <div className="metric-line">
-              <span>Cost</span>
-              <span>{fmtCurrency(rejected.cost)}</span>
-            </div>
-            <div className="metric-line">
-              <span>Lead time</span>
-              <span>{rejected.leadTime}d</span>
-            </div>
-            <div className="reason-box">{rejected.reason}</div>
-            <div className="stock-shift">
-              <div>Before: {rejected.before}</div>
-              <div className="neg">After: {rejected.after}</div>
-              <div>Safety stock: {rejected.safetyStock}</div>
-            </div>
-          </div>
-        )}
-        {accepted && (
-          <div className="lcol accepted">
-            <div className="verdict">✓ Accepted</div>
-            <div className="strategy-name">{accepted.strategy}</div>
-            <div className="allocation">
-              {accepted.source} → <span className="units">{accepted.units} units</span>
-            </div>
-            <div className="metric-line">
-              <span>Cost</span>
-              <span>{fmtCurrency(accepted.cost)}</span>
-            </div>
-            <div className="metric-line">
-              <span>Lead time</span>
-              <span>{accepted.leadTime}d</span>
-            </div>
-            <div className="metric-line">
-              <span>Network risk</span>
-              <span>{accepted.networkRisk}</span>
-            </div>
-            <div className="metric-line">
-              <span>Fill ratio</span>
-              <span>{Math.round(accepted.fillRatio * 100)}%</span>
-            </div>
-            <div className="reason-box">
-              Requester shortage resolved. Source stays above its safety stock threshold.
-            </div>
-          </div>
-        )}
-      </div>
-
-      <h3 className="section-title">Ripple impact of the accepted plan</h3>
-      <p className="hint">Transferring stock through {rp.via} shifts risk for every drug sharing that manufacturer.</p>
-      <div className="ripple-summary">
-        <div className="stat">
-          <div className="v">{rp.affectedDrugs}</div>
-          <div className="k">Drugs affected</div>
-        </div>
-        <div className="stat">
-          <div className="v">+{(rp.riskDelta * 100).toFixed(2)}%</div>
-          <div className="k">Avg. risk increase</div>
-        </div>
-        <div className="stat">
-          <div className="v">{rp.newlyAtRisk}</div>
-          <div className="k">Newly at-risk drugs</div>
-        </div>
-      </div>
-      <div className="ripple-list">
-        {rp.details.map((r) => (
-          <div className="ripple-row" key={r.drug}>
-            <span>{r.drug}</span>
-            <span className="delta">
-              {(r.before * 100).toFixed(1)}% → {(r.after * 100).toFixed(1)}% (+{(r.delta * 100).toFixed(2)}%)
-            </span>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
-
-/* ---------------------------- Human review ---------------------------- */
-function HumanReview({ d }) {
-  const accepted = d.candidates.find((c) => c.verdict === "accepted");
-  const [status, setStatus] = useState(null); // null | "accepted" | "rejected"
-
-  if (!accepted) {
-    return (
-      <div className="review-box">
-        <div className="rb-title">Human review required</div>
-        <div className="rb-sub">No accepted transfer plan available for this scenario.</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="review-box">
-      <div className="rb-title">Human review required</div>
-      <div className="rb-sub">
-        The system proposes an intervention. It does not execute a clinical substitution on its own.
-      </div>
-      <div className="review-line">
-        <span>Proposed transfer</span>
-        <span>
-          {accepted.source} → {accepted.units} units
-        </span>
-      </div>
-      <div className="review-line">
-        <span>Simulation result</span>
-        <span style={{ color: "var(--green)" }}>Safe</span>
-      </div>
-      <div className="review-line">
-        <span>Requester shortage</span>
-        <span style={{ color: "var(--green)" }}>Resolved</span>
-      </div>
-      <div className="review-line">
-        <span>Source shortage</span>
-        <span style={{ color: "var(--green)" }}>Not created</span>
-      </div>
-      <div className="review-line">
-        <span>Network risk</span>
-        <span>{accepted.networkRisk}</span>
-      </div>
-      <div className="review-actions">
-        <button className="btn reject" onClick={() => setStatus("rejected")}>
-          Reject plan
-        </button>
-        <button className="btn primary" onClick={() => setStatus("accepted")}>
-          Accept for pharmacist review
-        </button>
-      </div>
-      {status && (
-        <div className={`review-status ${status}`}>
-          {status === "accepted"
-            ? "Decision recorded — waiting for pharmacist confirmation."
-            : "Plan rejected — returned to the candidate pool for re-evaluation."}
-        </div>
-      )}
+    <div className="empty-block">
+      <p>This tab needs the full detail, which isn't loaded.</p>
     </div>
   );
 }
 
-/* ---------------------------- Main panel ---------------------------- */
-export default function DetailPanel({ drug }) {
-  const [section, setSection] = useState("overview");
+
+function SlidingTabs({ tab, onTab }) {
+  const navRef = useRef(null);
+  const refs = useRef({});
+  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
 
   useEffect(() => {
-    setSection("overview");
-  }, [drug?.id]);
-
-  if (!drug) {
-    return <section className="detail"><div className="empty-state">Select a drug from the triage queue</div></section>;
-  }
-
-  const tone = deadlineTone(drug.deadline.status);
+    const el = refs.current[tab];
+    const nav = navRef.current;
+    if (!el || !nav) return;
+    setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
+  }, [tab]);
 
   return (
-    <section className="detail">
+    <div className="subnav" role="tablist" ref={navRef}>
+      <span className="tab-indicator" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />
+      {TABS.map(([key, label]) => (
+        <button
+          key={key}
+          ref={(el) => { refs.current[key] = el; }}
+          role="tab"
+          aria-selected={tab === key}
+          className={tab === key ? "active" : ""}
+          onClick={() => onTab(key)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* -------------------------------- Main panel -------------------------------- */
+export default function DetailPanel({ drug, tab, onTab, onBack, partial, embedded = false }) {
+  // "list" when the user arrives via "View response options", otherwise cards
+  const [ivView, setIvView] = useState("compare");
+
+  const openOptions = () => {
+    setIvView("list");
+    onTab("intervention");
+  };
+
+  return (
+    <section className={`detail ${embedded ? "detail-embedded" : ""}`}>
+      {!embedded && <button type="button" className="back-link" onClick={onBack}>← Back to Shortages</button>}
+
       <div className="detail-head">
         <div className="drug-name">{drug.name}</div>
-        <div className="drug-sub">{drug.className}</div>
+        {drug.className && <div className="drug-sub">{drug.className}</div>}
         <div className="badge-row">
-          <span className="badge shortage">
-            <span className="dot" style={{ background: "var(--red)" }} />
-            {drug.currentShortage ? "Current shortage" : "Projected shortage"}
+          <span className={`badge ${drug.currentShortage ? "shortage" : ""}`}>
+            <StatusMark level={drug.currentShortage ? "critical" : "monitor"}>
+              {drug.currentShortage ? "FDA CURRENT" : "PROJECTED"}
+            </StatusMark>
           </span>
-          <span className="badge">Priority: {drug.priority}</span>
+          <span className="badge">Priority: {titleCase(drug.priority)}</span>
           <span className="badge">FDA: {drug.fdaStatus}</span>
         </div>
       </div>
 
-      <div className={`deadline ${tone}`}>
-        <Countdown days={drug.deadline.latestActionInDays} />
-        <div className="dl-info">
-          <div className="dl-status">{drug.deadline.status}</div>
-          <div className="dl-detail">
-            Predicted stockout in {drug.deadline.predictedStockoutDays}d · required lead time{" "}
-            {drug.deadline.requiredLeadDays}d
-          </div>
+      {partial && (
+        <div className="info-banner warn">
+          <span>
+            The full detail for this medicine couldn't be loaded, so only the summary is shown. Go back and
+            open it again to retry.
+          </span>
         </div>
-      </div>
+      )}
 
-      <div className="subnav">
-        {[
-          ["overview", "Overview"],
-          ["network", "Network"],
-          ["intervention", "Intervention"],
-          ["review", "Human review"],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            className={section === key ? "active" : ""}
-            onClick={() => setSection(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SlidingTabs tab={tab} onTab={onTab} />
 
-      {section === "overview" && <Overview d={drug} />}
-      {section === "network" && <NetworkGraph d={drug} />}
-      {section === "intervention" && <Intervention d={drug} />}
-      {section === "review" && <HumanReview d={drug} />}
+      {/* All tabs stay mounted so a selection or filter survives switching tabs */}
+      <div hidden={tab !== "overview"}>
+        <Overview d={drug} onViewOptions={openOptions} />
+      </div>
+      <div hidden={tab !== "network"}>
+        {partial ? <SummaryOnly /> : <NetworkGraph d={drug} />}
+      </div>
+      <div hidden={tab !== "intervention"}>
+        {partial ? <SummaryOnly /> : <Intervention d={drug} view={ivView} onViewChange={setIvView} />}
+      </div>
     </section>
   );
 }

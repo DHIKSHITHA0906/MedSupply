@@ -106,13 +106,16 @@ function transformScenarioRow(row, predictMap) {
 
     // deadline
     deadline: {
-      predictedStockoutDays: 0,
+      // Not part of GET /api/scenarios. App.jsx fills this in from the
+      // detail endpoint (null = "not loaded yet").
+      predictedStockoutDays: null,
       requiredLeadDays: 0,
       latestActionInDays: row.latest_action_in_days ?? 0,
       status: normaliseDeadlineStatus(row.deadline_status),
     },
 
     // stubs for fields only available in the detail endpoint
+    needUnits: row.need_units ?? 0,
     provenance: { real: [], simulated: [], synthetic: [] },
     network: { nodes: [], edges: [] },
     candidates,
@@ -132,123 +135,133 @@ function transformScenarioDetail(data) {
   const deadline = data.decision_deadline || {};
   const prov = data.provenance || {};
 
+  // --- Selected (recommended) plan -------------------------------------
+  const rawCandidates = data.candidates || [];
+  const selectedPlan =
+    rawCandidates.find((c) => c.selected) ||
+    rawCandidates.find((c) => c.verdict === "ACCEPTED");
+  const selectedSourceIds = new Set((selectedPlan?.allocations || []).map((a) => a.source_id));
+
   // --- Network graph --------------------------------------------------
-  // Build nodes + edges from requester + sources_considered
+  // One node per facility the drug touches: the requesting hospital plus
+  // every source the backend considered. Layout (x/y) is decided by the
+  // NetworkGraph component, so no coordinates are produced here.
   const sources = data.sources_considered || [];
+  const excludedReason = new Map((data.excluded_sources || []).map((e) => [e.id, e.reason]));
   const networkNodes = [];
   const networkEdges = [];
 
-  // Drug node (root, at top center)
   const drugLabel = drug.split(" ")[0]; // e.g. "BUPIVACAINE"
   networkNodes.push({
     id: "src",
     type: "drug",
     label: drugLabel.charAt(0) + drugLabel.slice(1).toLowerCase(),
-    x: 300,
-    y: 40,
+    fullName: drug,
   });
 
-  // Requester node (the hospital that needs stock)
+  // Requester = the hospital that needs stock
   networkNodes.push({
     id: "req",
     type: "hospital",
-    label: requester.name || "Requesting Hospital",
-    x: 80,
-    y: 150,
+    label: requester.name || "Requesting hospital",
+    isRequester: true,
     stock: requester.stock ?? 0,
-    safe: 0, // requester has no safe-transferable
-    lead: 0,
-    expiry: 0,
+    safe: 0, // requester has nothing to give away
+    lead: null,
+    expiry: null,
+    safetyStock: requester.safety_stock ?? null,
+    coverDays: requester.cover_days ?? null,
+    connectedMedicines: requester.connected_medicines || requester.connectedMedicines || [drug],
   });
   networkEdges.push(["src", "req"]);
 
-  // Source nodes (spread horizontally)
-  const maxSourcesForGraph = 6; // limit to avoid overcrowding the SVG
-  const visibleSources = sources.slice(0, maxSourcesForGraph);
-  const spacing = 520 / Math.max(visibleSources.length, 1);
-  visibleSources.forEach((s, i) => {
-    const nodeType =
-      s.type === "Hospital"
-        ? "hospital"
-        : s.type === "Warehouse"
-        ? "warehouse"
-        : "supplier";
-    const nodeId = `s${i}`;
+  sources.forEach((s) => {
+    const t = (s.type || "").toLowerCase();
+    const nodeType = t === "hospital" ? "hospital" : t === "warehouse" ? "warehouse" : "supplier";
     networkNodes.push({
-      id: nodeId,
+      id: s.id,
       type: nodeType,
       label: s.name,
-      x: 80 + spacing * (i + 1),
-      y: 150,
       stock: s.stock ?? 0,
       safe: s.safe_transferable ?? 0,
-      lead: s.lead_days ?? 0,
-      expiry: s.expiry_days ?? 0,
+      lead: s.lead_days ?? null,
+      expiry: s.expiry_days ?? null,
+      safetyStock: s.safety_stock ?? null,
+      unitCost: s.unit_cost ?? null,
+      excludedReason: excludedReason.get(s.id) || null,
+      inSelectedPlan: selectedSourceIds.has(s.id),
+      connectedMedicines: s.connected_medicines || s.connectedMedicines || [drug],
     });
-    networkEdges.push(["src", nodeId]);
+    networkEdges.push(["src", s.id]);
   });
 
-  // --- Candidates (transfer plans) -----------------------------------
-  // Find the selected (best accepted) plan and the first rejected plan
-  const rawCandidates = data.candidates || [];
-  const selectedPlan = rawCandidates.find((c) => c.selected) ||
-    rawCandidates.find((c) => c.verdict === "ACCEPTED");
-  const rejectedPlan = rawCandidates.find((c) => c.verdict === "REJECTED");
+  // --- Candidates (response plans) ------------------------------------
+  // Every plan the backend simulated, in the backend's own order.
+  // verdict is lower-cased so KPIBar's `verdict === "accepted"` keeps working.
+  const needUnits = data.need_units ?? 0;
+  const candidates = rawCandidates.map((c) => {
+    const effects = c.ripple_effects || [];
+    const via = new Set(effects.map((r) => r.via_supplier).filter(Boolean));
+    const avgDelta =
+      effects.length > 0 ? effects.reduce((sum, r) => sum + (r.delta || 0), 0) / effects.length : 0;
+    const cdl = c.deadline || {};
+    const firstImpact = (c.node_impacts || [])[0] || {};
+    return {
+      id: c.plan_id,
+      strategy: c.strategy,
+      label: c.label || c.strategy,
+      mode: c.mode,
+      verdict:
+        c.verdict === "ACCEPTED" ? "accepted" : c.verdict === "REJECTED" ? "rejected" : "partial",
+      selected: !!c.selected,
+      allocations: (c.allocations || []).map((a) => ({
+        id: a.source_id,
+        name: a.name,
+        type: (a.type || "").toLowerCase(),
+        units: a.units ?? 0,
+        leadDays: a.lead_days ?? null,
+      })),
+      units: c.delivered_units || 0,
+      needed: c.needed_units ?? needUnits,
+      fillRatio: c.fill_ratio ?? 0,
+      cost: c.metrics?.total_cost_inr ?? null,
+      leadTime: c.metrics?.max_lead_days ?? null,
+      networkRisk: c.metrics?.network_risk ?? null,
+      expiryWaste: c.metrics?.expiry_waste_fraction ?? 0,
+      score: c.score ?? null,
+      scoreBreakdown: c.score_breakdown || {},
+      reasons: c.reject_reasons || [],
+      sourceAfter: firstImpact.min_stock_after ?? null,
+      urgency: normaliseDeadlineStatus(cdl.status),
+      deadline: {
+        predictedStockoutDays: cdl.predicted_stockout_days ?? null,
+        latestActionInDays: cdl.latest_action_in_days ?? null,
+        latestActionAt: cdl.latest_action_at ?? null,
+        predictedStockoutAt: cdl.predicted_stockout_at ?? null,
+        status: normaliseDeadlineStatus(cdl.status),
+      },
+      ripple: {
+        affectedDrugs: effects.length,
+        riskDelta: avgDelta,
+        newlyAtRisk: effects.filter((r) => r.newly_at_risk).length,
+        via: [...via].join(", ") || "N/A",
+        details: effects.map((r) => ({
+          drug: r.drug,
+          before: r.risk_before ?? 0,
+          after: r.risk_after ?? 0,
+          delta: r.delta ?? 0,
+        })),
+      },
+    };
+  });
 
-  const candidates = [];
-
-  if (rejectedPlan) {
-    const impact = (rejectedPlan.node_impacts || [])[0] || {};
-    candidates.push({
-      strategy: rejectedPlan.label || rejectedPlan.strategy,
-      verdict: "rejected",
-      source: (rejectedPlan.allocations || [])[0]?.name || "Unknown",
-      units: rejectedPlan.delivered_units || 0,
-      cost: rejectedPlan.metrics?.total_cost_inr ?? 0,
-      leadTime: rejectedPlan.metrics?.max_lead_days ?? 0,
-      reason:
-        (rejectedPlan.reject_reasons || []).join("; ") ||
-        "Plan rejected by simulation.",
-      before: impact.min_stock_before ?? 0,
-      after: impact.min_stock_after ?? 0,
-      safetyStock: impact.safety_stock ?? 0,
-    });
-  }
-
-  if (selectedPlan) {
-    candidates.push({
-      strategy: selectedPlan.label || selectedPlan.strategy,
-      verdict: "accepted",
-      source:
-        selectedPlan.allocations?.length === 1
-          ? selectedPlan.allocations[0].name
-          : `${selectedPlan.allocations?.length ?? 0} sources`,
-      units: selectedPlan.delivered_units || 0,
-      cost: selectedPlan.metrics?.total_cost_inr ?? 0,
-      leadTime: selectedPlan.metrics?.max_lead_days ?? 0,
-      networkRisk: selectedPlan.metrics?.network_risk ?? 0,
-      fillRatio: selectedPlan.fill_ratio ?? 0,
-    });
-  }
-
-  // --- Ripple effects -------------------------------------------------
-  const selectedRipple = selectedPlan?.ripple_effects || [];
-  const rippleViaSet = new Set(selectedRipple.map((r) => r.via_supplier).filter(Boolean));
-  const avgDelta =
-    selectedRipple.length > 0
-      ? selectedRipple.reduce((sum, r) => sum + (r.delta || 0), 0) / selectedRipple.length
-      : 0;
-  const ripple = {
-    affectedDrugs: selectedRipple.length,
-    riskDelta: avgDelta,
-    newlyAtRisk: selectedRipple.filter((r) => r.newly_at_risk).length,
-    via: [...rippleViaSet].join(", ") || "N/A",
-    details: selectedRipple.map((r) => ({
-      drug: r.drug,
-      before: r.risk_before ?? 0,
-      after: r.risk_after ?? 0,
-      delta: r.delta ?? 0,
-    })),
+  // Ripple of the recommended plan (kept for any consumer that wants one summary)
+  const ripple = candidates.find((c) => c.selected)?.ripple || {
+    affectedDrugs: 0,
+    riskDelta: 0,
+    newlyAtRisk: 0,
+    via: "N/A",
+    details: [],
   };
 
   // --- Provenance -----------------------------------------------------
@@ -269,12 +282,46 @@ function transformScenarioDetail(data) {
   if (provenance.simulated.length === 0) provenance.simulated.push("Inventory levels");
   if (provenance.synthetic.length === 0) provenance.synthetic.push("Network topology");
 
-  // --- Deadline -------------------------------------------------------
-  const dl = selectedPlan?.deadline || deadline;
+  // --- Scenario-level deadline ---------------------------------------
+  // The overview must use the scenario decision_deadline. Individual
+  // candidate deadlines belong to the Intervention view only.
+  const dl = deadline;
+
+  const affectedFacilities = requester.name ? 1 : 0;
+  const noActionConsequence =
+    deadline.status === "ACT_NOW" || deadline.status === "URGENT" || deadline.status === "OVERDUE"
+      ? "Service disruption risk if no response is taken before stockout."
+      : "Supply continuity risk if no response is taken before stockout.";
+
+  const flaggedReasons = [
+    `Risk score: ${((ma.risk_score ?? 0) * 100).toFixed(2)}%`,
+    ma.current_shortage ? "FDA shortage status is CURRENT" : "FDA shortage status is not currently listed as CURRENT",
+    ma.risk_window_days != null ? `Warning window: ${ma.risk_window_days} days` : null,
+    requester.daily_forecast != null && deadline.predicted_stockout_days != null
+      ? `Demand/stock evidence: ${Number(requester.daily_forecast).toFixed(2)} units/day with ${Number(requester.stock ?? 0)} units on hand; projected stockout in ${Number(deadline.predicted_stockout_days).toFixed(2)} days`
+      : null,
+  ].filter(Boolean);
 
   return {
     id: drug,
     name: drug,
+    needUnits,
+    requester: {
+      id: requester.id ?? null,
+      name: requester.name ?? null,
+      stock: requester.stock ?? null,
+      dailyForecast: requester.daily_forecast ?? null,
+      safetyStock: requester.safety_stock ?? null,
+      coverDays: requester.cover_days ?? null,
+    },
+    noAction: {
+      stockoutDays: dl.predicted_stockout_days ?? null,
+      stockoutAt: dl.predicted_stockout_at ?? null,
+      unmetUnits: needUnits || null,
+      affectedFacilities,
+      consequence: noActionConsequence,
+    },
+    flaggedReasons,
     className: "", // backend does not provide drug class
     risk: ma.risk_score ?? 0,
     riskWindowDays: ma.risk_window_days ?? 0,
@@ -283,15 +330,81 @@ function transformScenarioDetail(data) {
     fdaStatus: ma.current_shortage ? "CURRENT" : "NONE",
     currentShortage: ma.current_shortage ?? false,
     deadline: {
-      predictedStockoutDays: dl.predicted_stockout_days ?? 0,
+      predictedStockoutDays: dl.predicted_stockout_days ?? null,
       requiredLeadDays: dl.required_lead_days ?? 0,
       latestActionInDays: dl.latest_action_in_days ?? 0,
+      latestActionAt: dl.latest_action_at ?? null,
+      predictedStockoutAt: dl.predicted_stockout_at ?? null,
       status: normaliseDeadlineStatus(dl.status),
     },
     provenance,
     network: { nodes: networkNodes, edges: networkEdges },
     candidates,
     ripple,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Offline demo fixtures -> current data model                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * demoData.js still uses the original, simpler shape (one accepted + one
+ * rejected plan). This maps it onto the model the components read now, so
+ * flipping USE_LIVE_API to false keeps working.
+ */
+function adaptDemoDrug(d) {
+  const nodes = (d.network?.nodes || []).map((n) => ({
+    ...n,
+    isRequester: n.id === "h1" || undefined,
+    lead: n.type === "drug" || n.id === "h1" ? null : n.lead,
+    expiry: n.type === "drug" || n.id === "h1" ? null : n.expiry,
+  }));
+  const typeOf = (name) => nodes.find((n) => n.label === name)?.type || "warehouse";
+  const emptyRipple = { affectedDrugs: 0, riskDelta: 0, newlyAtRisk: 0, via: "N/A", details: [] };
+  const candidates = (d.candidates || []).map((c, i) => ({
+    id: `D${i + 1}`,
+    strategy: "",
+    label: c.strategy,
+    mode: c.verdict === "accepted" ? "safe" : "baseline",
+    verdict: c.verdict,
+    selected: c.verdict === "accepted",
+    allocations: [{ id: `demo-${i}`, name: c.source, type: typeOf(c.source), units: c.units, leadDays: c.leadTime }],
+    units: c.units,
+    needed: c.units,
+    fillRatio: c.fillRatio ?? 1,
+    cost: c.cost,
+    leadTime: c.leadTime,
+    networkRisk: c.networkRisk ?? null,
+    expiryWaste: c.expiryWaste ?? 0,
+    score: c.verdict === "accepted" ? 0.2 : null,
+    scoreBreakdown: {},
+    reasons: c.reason ? [c.reason] : [],
+    deadline: {
+      predictedStockoutDays: d.deadline?.predictedStockoutDays ?? null,
+      latestActionInDays: d.deadline?.latestActionInDays ?? null,
+      status: d.deadline?.status,
+    },
+    ripple: c.verdict === "accepted" ? d.ripple || emptyRipple : emptyRipple,
+  }));
+  return {
+    ...d,
+    needUnits: candidates.find((c) => c.verdict === "accepted")?.units ?? 0,
+    requester: d.requester || null,
+    noAction: d.noAction || {
+      stockoutDays: d.deadline?.predictedStockoutDays ?? null,
+      stockoutAt: null,
+      unmetUnits: candidates.find((c) => c.verdict === "accepted")?.units ?? null,
+      affectedFacilities: 1,
+      consequence: "Service disruption risk if no response is taken before stockout.",
+    },
+    flaggedReasons: d.flaggedReasons || [
+      `Risk score: ${(d.risk * 100).toFixed(2)}%`,
+      d.currentShortage ? "FDA shortage status is CURRENT" : "FDA shortage status is not currently listed as CURRENT",
+      `Warning window: ${d.riskWindowDays} days`,
+    ],
+    network: { nodes, edges: d.network?.edges || [] },
+    candidates,
   };
 }
 
@@ -309,7 +422,7 @@ function transformScenarioDetail(data) {
  */
 export async function getScenarios() {
   if (!USE_LIVE_API) {
-    return Promise.resolve(demoData);
+    return Promise.resolve(demoData.map(adaptDemoDrug));
   }
 
   // Fetch both endpoints in parallel
@@ -336,7 +449,7 @@ export async function getScenarios() {
 export async function getScenario(drugId) {
   if (!USE_LIVE_API) {
     const found = demoData.find((d) => d.id === drugId);
-    return Promise.resolve(found ?? null);
+    return Promise.resolve(found ? adaptDemoDrug(found) : null);
   }
   const json = await apiFetch(`/api/scenarios/${encodeURIComponent(drugId)}`);
   return transformScenarioDetail(json);
