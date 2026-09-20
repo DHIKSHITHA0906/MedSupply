@@ -2,7 +2,7 @@
 
 React + Vite decision console for MedSupply. It reads shortage scenarios from the live backend API and lets a pharmacist triage at-risk medicines, inspect the affected supply network, compare accepted and rejected response plans, and confirm a plan for review.
 
-- **Live app:** <https://main.d31fsbjqraajfj.amplifyapp.com> (AWS Amplify)
+- **Live app:** <https://main.d31fsbjqraajjf.amplifyapp.com> (AWS Amplify)
 - **API it talks to:** <https://ir06s4arb0.execute-api.ap-southeast-2.amazonaws.com>
 - Backend details: [backend/README.md](../backend/README.md) · Endpoints: [docs/API.md](../docs/API.md) · Demo script: [docs/DEMO.md](../docs/DEMO.md)
 
@@ -174,7 +174,7 @@ npm run preview      # serve the built dist/ locally
 
 ## Deployment (AWS Amplify)
 
-The frontend is deployed on **AWS Amplify** at <https://main.d31fsbjqraajfj.amplifyapp.com> and talks to the API over HTTPS.
+The frontend is deployed on **AWS Amplify** at <https://main.d31fsbjqraajjf.amplifyapp.com> and talks to the API over HTTPS.
 
 - The repository contains **no `amplify.yml`**; build settings are configured in the Amplify console.
 - Consistent with the repository layout: the app lives in `frontend/`, builds with `npm run build`, and publishes the `dist/` directory. Set `VITE_API_BASE_URL` in Amplify's environment variables if you want to point at a different API. Confirm the exact settings in the Amplify console.

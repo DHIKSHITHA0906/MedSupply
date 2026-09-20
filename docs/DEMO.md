@@ -6,7 +6,7 @@ Related: [Root README](../README.md) · [Architecture](ARCHITECTURE.md) · [API 
 
 > **Say this early:** MedSupply is decision support. It finds risk, compares options and computes a deadline. A pharmacist makes the final procurement decision, and it gives no clinical advice.
 
-- **Live app:** <https://main.d31fsbjqraajfj.amplifyapp.com>
+- **Live app:** <https://main.d31fsbjqraajjf.amplifyapp.com>
 - **API base:** `https://ir06s4arb0.execute-api.ap-southeast-2.amazonaws.com`
 
 ## The idea to get across

@@ -13,7 +13,7 @@ Related: [Root README](../README.md) · [Architecture](ARCHITECTURE.md) · [API 
 | Component | Value |
 |---|---|
 | AWS region | `ap-southeast-2` *(per team)* |
-| Frontend | AWS Amplify, <https://main.d31fsbjqraajfj.amplifyapp.com> *(per team)* |
+| Frontend | AWS Amplify, <https://main.d31fsbjqraajjf.amplifyapp.com> *(per team)* |
 | API | Amazon API Gateway `MedSupplyAPI`, base URL `https://ir06s4arb0.execute-api.ap-southeast-2.amazonaws.com` *(per team)* |
 | Backend compute | AWS Lambda function `medsupply` *(per team)*, lite package |
 | Workflow | AWS Step Functions state machine `MedSupplyWorkflow` *(per team)* |
@@ -184,7 +184,7 @@ Then `GET <ApiUrl>/predict/<drug>` reports `"source": "live_model"`. Upload `mod
 
 ## 8. Frontend deployment (Amplify)
 
-- Hosted on AWS Amplify at <https://main.d31fsbjqraajfj.amplifyapp.com> *(per team)*.
+- Hosted on AWS Amplify at <https://main.d31fsbjqraajjf.amplifyapp.com> *(per team)*.
 - The repository has **no `amplify.yml`**; build settings live in the Amplify console. The layout implies: app root `frontend/`, install with `npm ci`, build with `npm run build`, publish `dist/`. Confirm the actual settings in the console.
 - Routing is hash-based, so no rewrite rules are needed.
 - The API base defaults to the live API. Set `VITE_API_BASE_URL` in Amplify only to point at a different API.

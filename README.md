@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Live demo** | <https://main.d31fsbjqraajfj.amplifyapp.com> |
+| **Live demo** | <https://main.d31fsbjqraajjf.amplifyapp.com> |
 | **API base URL** | <https://ir06s4arb0.execute-api.ap-southeast-2.amazonaws.com> (paths start with `/api`) |
 | **GitHub** | <https://github.com/DHIKSHITHA0906/MedSupply> |
 | **AWS region** | `ap-southeast-2` |
@@ -117,7 +117,7 @@ Every scenario response carries a `provenance` block, and the UI shows the same 
 
 | Component | Value |
 |---|---|
-| Frontend | AWS Amplify, <https://main.d31fsbjqraajfj.amplifyapp.com> |
+| Frontend | AWS Amplify, <https://main.d31fsbjqraajjf.amplifyapp.com> |
 | API | Amazon API Gateway `MedSupplyAPI`, region `ap-southeast-2` |
 | Compute | AWS Lambda function `medsupply` (lite package) |
 | Workflow | AWS Step Functions state machine `MedSupplyWorkflow` |
